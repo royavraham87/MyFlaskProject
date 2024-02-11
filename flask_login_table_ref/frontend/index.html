@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your Website</title>
+    <!-- Include Axios library for making HTTP requests -->
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        /* CSS styles for better appearance */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        header {
+            background-color: #333;
+            color: #fff;
+            padding: 10px 0;
+        }
+
+        nav ul {
+            list-style-type: none;
+            margin: 0;
+            padding: 0;
+        }
+
+        nav ul li {
+            display: inline;
+            margin-right: 20px;
+        }
+
+        nav ul li a {
+            text-decoration: none;
+            color: #fff;
+        }
+
+        .content {
+            padding: 20px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <label for="username">User:</label>
+    <input id="username" name="username" placeholder="Enter your username" autocomplete="off" title="Username"><br>
+
+    <label for="password">Password:</label>
+    <input id="password" name="password" type="password" placeholder="Enter your password" autocomplete="off" title="Password"><br>
+
+    <label for="cus_name">Name:</label>
+    <input id="cus_name" name="cus_name" placeholder="Enter your name" autocomplete="off" title="Name"><br>
+
+    <label for="city">City:</label>
+    <input id="city" name="city" placeholder="Enter your city" autocomplete="off" title="City"><br>
+
+    <label for="age">Age:</label>
+    <input id="age" name="age" placeholder="Enter your age" autocomplete="off" title="Age"><br>
+
+    <label for="email">Email:</label>
+    <input id="email" name="email" type="email" placeholder="Enter your email" autocomplete="off" title="Email"><br>
+
+    <label for="role">Role:</label>
+    <select id="role" name="role">
+        <option value="0" selected>Customer</option>
+        <option value="1">Librarian</option>
+    </select>
+
+    <input type="file" id="fileInput" name="file" autocomplete="off" title="File Input"><br>
+
+    <div id="buttonContainer">
+        <button onclick="registerUser()">Register</button>
+        <button onclick="loginUser()">Login</button>
+        <button onclick="logoutUser()">Logout</button>
+        <button onclick="showUsers()">Show Users</button>
+    </div>
+    <div id="userList"></div>
+    <div id="bookList"></div>
+
+    <!-- Div element to display welcome message -->
+    <div id="gret"></div>
+
+    <!-- Div element to display user's image -->
+    <div id="uimage"></div>
+
+    <script>
+        const SERVER_URL = "http://127.0.0.1:5000";
+
+        const loginUser = () => {
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+
+    axios.post(`${SERVER_URL}/login`, { username, password })
+        .then(response => {
+            console.log(response.data);
+            sessionStorage.setItem('access_token', response.data.access_token);
+            
+            // Check if response data contains the role property
+            if (response.data && 'role' in response.data) {
+                // Store user role in session storage
+                sessionStorage.setItem('user_role', response.data.role);
+            } else {
+                console.error('Error logging in: User role not found in response data');
+            }
+            // Optionally, you can redirect the user to another page or update the UI
+        })
+        .catch(error => {
+            console.error('Error logging in:', error);
+            // Handle login error here
+        });
+};
+
+        function logoutUser() {
+            sessionStorage.removeItem('access_token');
+            console.log('User logged out');
+            // Optionally, you can update the UI to indicate that the user is logged out
+        }
+
+        const showUsers = () => {
+    const token = sessionStorage.getItem('access_token');
+    if (!token) {
+        console.error("Access token not found in storage");
+        return;
+    }
+
+    axios.get(`${SERVER_URL}/getusers`, {
+        headers: {
+            Authorization: `Bearer ${token}`
+        }
+    })
+    .then(response => {
+        const users = response.data.users;
+        const userListDiv = document.getElementById('userList');
+        let table = userListDiv.querySelector('table');
+
+        // If table doesn't exist, create it
+        if (!table) {
+            table = document.createElement('table');
+            table.border = "1";
+            table.style.borderCollapse = "collapse";
+            userListDiv.appendChild(table);
+
+            // Create table header row
+            const headerRow = table.insertRow();
+            const headers = ['User ID', 'Username', 'Name', 'City', 'Age', 'Email', 'Role', 'Borrowed Books', 'Delete User'];
+            headers.forEach(headerText => {
+                const headerCell = document.createElement('th');
+                headerCell.appendChild(document.createTextNode(headerText));
+                headerRow.appendChild(headerCell);
+            });
+        }
+
+        // Clear existing rows from the table
+        const rowCount = table.rows.length;
+        for (let i = rowCount - 1; i > 0; i--) {
+            table.deleteRow(i);
+        }
+
+        // Add users data to table rows
+        users.forEach(user => {
+            const row = table.insertRow();
+            row.insertCell().textContent = user.cust_id;
+            row.insertCell().textContent = user.username;
+            row.insertCell().textContent = user.cus_name;
+            row.insertCell().textContent = user.city;
+            row.insertCell().textContent = user.age;
+            row.insertCell().textContent = user.email;
+            row.insertCell().textContent = user.role;
+            row.insertCell().textContent = user.borrowed_books.length > 0 ? 'Yes' : 'No';
+
+            // Create cell for delete button
+            const deleteCell = row.insertCell();
+
+            // Create delete button
+            const deleteButton = document.createElement('button');
+            deleteButton.textContent = 'Delete User';
+
+            // Determine if the logged-in user is a librarian
+            const currentUserRole = sessionStorage.getItem('user_role');
+            if (currentUserRole === '1') {
+                // If librarian, enable delete functionality
+                deleteButton.onclick = () => {
+                    deleteUser(user.cust_id);
+                    alert("User deleted successfully");
+                };
+            } else {
+                // If not librarian, disable delete functionality
+                deleteButton.onclick = () => alert("Only librarians can delete users");
+                deleteButton.disabled = true;
+            }
+
+            // Append delete button to delete cell
+            deleteCell.appendChild(deleteButton);
+        });
+    })
+    .catch(error => {
+        console.error('Error fetching users:', error);
+        // Handle error here
+    });
+};
+
+
+        const deleteUser = (userId) => {
+    const token = sessionStorage.getItem('access_token');
+    if (!token) {
+        console.error("Access token not found in storage");
+        return;
+    }
+
+    axios.delete(`${SERVER_URL}/deleteuser/${userId}`, {
+        headers: {
+            Authorization: `Bearer ${token}`
+        }
+    })
+        .then(response => {
+            console.log(response.data.message);
+            // Refresh user list after deletion
+            showUsers(); // Call showUsers() to fetch updated user list
+        })
+        .catch(error => {
+            console.error('Error deleting user:', error);
+        });
+    
+    // Prevent default form submission behavior
+    event.preventDefault();
+};
+
+        const add_books = () => {
+            const bookName = document.getElementById('book_name').value;
+            const author = document.getElementById('author').value;
+            const yearPublished = document.getElementById('year_published').value;
+            const loanType = document.getElementById('loan_type').value;
+
+            const token = sessionStorage.getItem('access_token');
+
+            console.log("Access Token from Storage:", token);
+
+            if (!token) {
+                console.error("Authorization Token not found in storage");
+                return;
+            }
+
+            const requestData = {
+                book_name: bookName,
+                author: author,
+                year_published: yearPublished,
+                loan_type: loanType
+            };
+
+            axios.post(`${SERVER_URL}/addbooks`, requestData, {
+                headers: {
+                    Authorization: `Bearer ${token}`
+                }
+            })
+            .then(response => {
+                console.log(response.data);
+                // Handle successful addition of book
+            })
+            .catch(error => {
+                console.error('Error adding book:', error.response.data.error);
+                // Handle error when adding book
+            });
+        };
+
+
+
+        const showBooks = () => {
+    const token = sessionStorage.getItem('access_token');
+    if (!token) {
+        console.error("Access token not found in storage");
+        return;
+    }
+
+    axios.get(`${SERVER_URL}/getbooks`, {
+        headers: {
+            Authorization: `Bearer ${token}`
+        }
+    })
+    .then(response => {
+        const books = response.data.books;
+        const bookListDiv = document.getElementById('bookList');
+        let table = bookListDiv.querySelector('table');
+
+        // If table doesn't exist, create it
+        if (!table) {
+            table = document.createElement('table');
+            bookListDiv.appendChild(table);
+
+            // Create table header row
+            const headerRow = table.insertRow();
+            const headers = ['Book ID', 'Book Name', 'Author', 'Year Published', 'Loan Type', 'Borrow the Book', 'Return the Book', 'Return Date', 'Delete', 'Update'];
+            headers.forEach(headerText => {
+                const headerCell = document.createElement('th');
+                headerCell.appendChild(document.createTextNode(headerText));
+                headerRow.appendChild(headerCell);
+            });
+        }
+
+        // Clear existing rows from the table
+        const rowCount = table.rows.length;
+        for (let i = rowCount - 1; i > 0; i--) {
+            table.deleteRow(i);
+        }
+
+        // Add books data to table rows
+        books.forEach(book => {
+            const row = table.insertRow();
+            row.insertCell().textContent = book.book_id;
+            row.insertCell().textContent = book.book_name;
+            row.insertCell().textContent = book.author;
+            row.insertCell().textContent = book.year_published;
+            row.insertCell().textContent = book.loan_type;
+            // Add buttons for borrow, return, delete, and update
+            const borrowButtonCell = row.insertCell();
+            const borrowButton = document.createElement('button');
+            borrowButton.textContent = 'Borrow';
+            borrowButton.onclick = () => borrowBook(book.book_id);
+            borrowButtonCell.appendChild(borrowButton);
+
+            const returnButtonCell = row.insertCell();
+            const returnButton = document.createElement('button');
+            returnButton.textContent = 'Return';
+            returnButton.onclick = () => returnBook(book.book_id);
+            returnButtonCell.appendChild(returnButton);
+
+            row.insertCell().textContent = book.return_date ? book.return_date : '-';
+            
+            const deleteButtonCell = row.insertCell();
+            const deleteButton = document.createElement('button');
+            deleteButton.textContent = 'Delete';
+            deleteButton.onclick = () => deleteBook(book.book_id);
+            deleteButtonCell.appendChild(deleteButton);
+
+            const updateButtonCell = row.insertCell();
+            const updateButton = document.createElement('button');
+            updateButton.textContent = 'Update';
+            updateButton.onclick = () => updateBook(book.book_id);
+            updateButtonCell.appendChild(updateButton);
+        });
+    })
+    .catch(error => {
+        console.error('Error getting books:', error);
+        // Handle error here
+    });
+};
+
+
+    
+
+
+        function registerUser() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const cus_name = document.getElementById('cus_name').value;
+            const city = document.getElementById('city').value;
+            const age = document.getElementById('age').value;
+            const email = document.getElementById('email').value;
+            const role = document.getElementById('role').value;
+
+            const formData = new FormData();
+            formData.append('username', username);
+            formData.append('password', password);
+            formData.append('cus_name', cus_name);
+            formData.append('city', city);
+            formData.append('age', age);
+            formData.append('email', email);
+            formData.append('role', role);
+            formData.append('file', document.getElementById('fileInput').files[0]);
+
+            const config = {
+                headers: {
+                    'content-type': 'application/json'
+                }
+            };
+
+            axios.post(`${SERVER_URL}/register`, formData, config)
+                .then(response => {
+                    console.log(response.data.message);
+                    // Optionally, you can show a success message or update the UI
+                })
+                .catch(error => {
+                    console.error('Error registering user:', error.response.data.message);
+                    // Handle error, show error message to the user, etc.
+                });
+        }
+
+
+
+        function get_books() {
+            axios.get('/getbooks')
+                .then(response => {
+                    console.log(response.data.books);
+                    // Display the books
+                    const books = response.data.books;
+                    const booksListDiv = document.getElementById('books-list');
+                    booksListDiv.innerHTML = '';
+
+                    // Create table
+                    const table = document.createElement('table');
+                    table.border = "1";
+                    table.style.borderCollapse = "collapse";
+
+                    // Create table header row
+                    const headerRow = table.insertRow();
+                    const headers = ['Book ID', 'Book Name', 'Author', 'Year Published', 'Loan Type', 'Delete', 'Update Book'];
+                    headers.forEach(headerText => {
+                        const headerCell = document.createElement('th');
+                        headerCell.appendChild(document.createTextNode(headerText));
+                        headerRow.appendChild(headerCell);
+                    });
+
+                    // Add books data to table rows
+                    books.forEach(book => {
+                        const row = table.insertRow();
+                        row.insertCell().appendChild(document.createTextNode(book.book_id));
+                        row.insertCell().appendChild(document.createTextNode(book.book_name));
+                        row.insertCell().appendChild(document.createTextNode(book.author));
+                        row.insertCell().appendChild(document.createTextNode(book.year_published));
+                        row.insertCell().appendChild(document.createTextNode(book.loan_type));
+                        
+                        // Create delete button
+                        const deleteButtonCell = row.insertCell();
+                        const deleteButton = document.createElement('button');
+                        deleteButton.textContent = 'Delete';
+                        deleteButton.onclick = () => deleteBook(book.book_id);
+                        deleteButtonCell.appendChild(deleteButton);
+
+                        // Create update button
+                        const updateButtonCell = row.insertCell();
+                        const updateButton = document.createElement('button');
+                        updateButton.textContent = 'Update';
+                        updateButton.onclick = () => updateBook(book.book_id);
+                        updateButtonCell.appendChild(updateButton);
+                    });
+
+                    booksListDiv.appendChild(table);
+                })
+                .catch(error => {
+                    console.error('Error getting books:', error.response.data.error);
+                    // Handle error, show error message to the user, etc.
+                });
+        }
+
+        function deleteBook(bookId) {
+            axios.delete(`/deletebook/${bookId}`)
+                .then(response => {
+                    console.log(response.data.message);
+                    // Optionally, update the UI to indicate success or refresh the book list
+                    get_books(); // Refresh book list after deletion
+                })
+                .catch(error => {
+                    console.error('Error deleting book:', error.response.data.error);
+                    // Handle error, show error message to the user, etc.
+                });
+        }
+
+        function updateBook(bookId) {
+            // Implement update book functionality here
+            // You can use a modal or a form to update the book details
+        }
+    </script>
+    <hr>
+    <div id="gret">Welcome</div>
+    <div id="uimage">image</div>
+    <h2>Book details</h2>
+
+    <label for="book_name">Book Name:</label>
+<input id="book_name" type="text" placeholder="Enter book name"><br>
+
+<label for="author">Author:</label>
+<input id="author" type="text" placeholder="Enter author name"><br>
+
+<label for="year_published">Year Published:</label>
+<input id="year_published" type="number" placeholder="Enter year published"><br>
+
+<label for="loan_type">Loan Type:</label>
+<select id="loan_type">
+    <option value="1">10 days</option>
+    <option value="2">5 days</option>
+    <option value="3">2 days</option>
+</select><br>
+
+    <button onclick="add_books()">Add Book</button>
+    <button onclick="get_books()">Show all books</button>
+
+    <div id="books-list"></div>
+
+    <hr>
+    
+    <script>
+       
+        const login = async () => {
+            res = await axios.post(`${MY_SERVER}/login`, { username: username.value, password: password.value })
+            console.log(res.data);
+            uimage.innerHTML = `<img src=${res.data.image_url}>`
+            gret.innerHTML = "<h1>Welcome mr. " + res.data.username
+            sessionStorage.setItem("access_token", res.data.access_token)
+        }
+
+        const logout = () => {
+            sessionStorage.setItem("access_token", "")
+        }
+
+        const register = async () => {
+            try {
+                const fileInput = document.getElementById('fileInput');
+                const file = fileInput.files[0];
+
+                const formData = new FormData();
+                formData.append('file', file);  // Append the file to the FormData
+                formData.append('username', username.value);
+                formData.append('password', password.value);
+                formData.append('cus_name', cus_name.value);
+                formData.append('city', city.value);
+                formData.append('age', age.value);
+                formData.append('email', email.value);
+                formData.append('role', role.value);
+
+                const config = {
+                    headers: {
+                        'Content-Type': 'multipart/form-data',
+                    },
+                };
+
+                const res = await axios.post(`${MY_SERVER}/register`, formData, config);
+                console.log(res.data);
+                sessionStorage.setItem("access_token", res.data.access_token);
+            } catch (error) {
+                console.error('Error during registration:', error);
+            }
+        };
+    </script>
+</body>
+
+</html>
