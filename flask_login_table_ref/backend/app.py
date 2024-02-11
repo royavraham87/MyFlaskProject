@@ -356,26 +356,32 @@ def update_book(book_id):
             return jsonify({'message': 'Book not found'}), 404
 
         # Get form data from request
+        print("Received form data:", request.form)
         book_name = request.form.get('book_name')
         author = request.form.get('author')
         year_published = request.form.get('year_published')
         loan_type = request.form.get('loan_type')
-        borrowed = request.form.get('borrowed')
 
+        print("Updating book:", book_to_update)  # Print the book_to_update object
+        print(book_name,author,year_published,loan_type)
         # Update the book information
         book_to_update.book_name = book_name or book_to_update.book_name
         book_to_update.author = author or book_to_update.author
         book_to_update.year_published = year_published or book_to_update.year_published
         book_to_update.loan_type = loan_type or book_to_update.loan_type
-        book_to_update.borrowed = borrowed or book_to_update.borrowed
 
         # Commit the changes to the database
         db.session.commit()
 
+        print("Book updated successfully:", book_to_update)
+
         return jsonify({'message': 'Book updated successfully'}), 200
 
     except Exception as e:
+        print("Error updating book:", e)
         return jsonify({'error': str(e)}), 500
+
+
 
 
 

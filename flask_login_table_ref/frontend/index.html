@@ -78,7 +78,6 @@
         <button onclick="showUsers()">Show Users</button>
     </div>
     <div id="userList"></div>
-    <div id="bookList"></div>
 
     <!-- Div element to display welcome message -->
     <div id="gret"></div>
@@ -228,46 +227,47 @@
     event.preventDefault();
 };
 
-        const add_books = () => {
-            const bookName = document.getElementById('book_name').value;
-            const author = document.getElementById('author').value;
-            const yearPublished = document.getElementById('year_published').value;
-            const loanType = document.getElementById('loan_type').value;
+const add_books = () => {
+    const bookName = document.getElementById('book_name').value;
+    const author = document.getElementById('author').value;
+    const yearPublished = document.getElementById('year_published').value;
+    const loanType = document.getElementById('loan_type').value;
 
-            const token = sessionStorage.getItem('access_token');
+    const token = sessionStorage.getItem('access_token');
 
-            console.log("Access Token from Storage:", token);
+    console.log("Access Token from Storage:", token);
 
-            if (!token) {
-                console.error("Authorization Token not found in storage");
-                return;
+    if (!token) {
+        console.error("Authorization Token not found in storage");
+        return;
+    }
+
+    const requestData = {
+        book_name: bookName,
+        author: author,
+        year_published: yearPublished,
+        loan_type: loanType,
+        borrowed: false  // Set borrowed attribute to false
+    };
+
+    axios.post(`${SERVER_URL}/addbooks`, requestData, {
+            headers: {
+                Authorization: `Bearer ${token}`
             }
+        })
+        .then(response => {
+            console.log(response.data);
+            alert("Book added successfully");
+            // Optionally, you can handle UI updates or redirection after adding the book
+        })
+        .catch(error => {
+            console.error('Error adding book:', error.response.data.error);
+            alert("Failed to add book. Please try again.");
+            // Optionally, you can handle UI updates or provide more detailed error messages
+        });
+};
 
-            const requestData = {
-                book_name: bookName,
-                author: author,
-                year_published: yearPublished,
-                loan_type: loanType
-            };
-
-            axios.post(`${SERVER_URL}/addbooks`, requestData, {
-                headers: {
-                    Authorization: `Bearer ${token}`
-                }
-            })
-            .then(response => {
-                console.log(response.data);
-                // Handle successful addition of book
-            })
-            .catch(error => {
-                console.error('Error adding book:', error.response.data.error);
-                // Handle error when adding book
-            });
-        };
-
-
-
-        const showBooks = () => {
+const get_books = () => {
     const token = sessionStorage.getItem('access_token');
     if (!token) {
         console.error("Access token not found in storage");
@@ -281,29 +281,26 @@
     })
     .then(response => {
         const books = response.data.books;
+        console.log("Books data:", books); // Logging books data for debugging
+
         const bookListDiv = document.getElementById('bookList');
-        let table = bookListDiv.querySelector('table');
 
-        // If table doesn't exist, create it
-        if (!table) {
-            table = document.createElement('table');
-            bookListDiv.appendChild(table);
+        // Clear existing content
+        bookListDiv.innerHTML = '';
 
-            // Create table header row
-            const headerRow = table.insertRow();
-            const headers = ['Book ID', 'Book Name', 'Author', 'Year Published', 'Loan Type', 'Borrow the Book', 'Return the Book', 'Return Date', 'Delete', 'Update'];
-            headers.forEach(headerText => {
-                const headerCell = document.createElement('th');
-                headerCell.appendChild(document.createTextNode(headerText));
-                headerRow.appendChild(headerCell);
-            });
-        }
+        // Create table element
+        const table = document.createElement('table');
+        table.border = "1";
+        table.style.borderCollapse = "collapse";
 
-        // Clear existing rows from the table
-        const rowCount = table.rows.length;
-        for (let i = rowCount - 1; i > 0; i--) {
-            table.deleteRow(i);
-        }
+        // Create table header row
+        const headerRow = table.insertRow();
+        const headers = ['Book ID', 'Book Name', 'Author', 'Published?', 'Loan Type', 'Borrow?', 'Return?', 'Return Date', 'Delete', 'Update'];
+        headers.forEach(headerText => {
+            const headerCell = document.createElement('th');
+            headerCell.appendChild(document.createTextNode(headerText));
+            headerRow.appendChild(headerCell);
+        });
 
         // Add books data to table rows
         books.forEach(book => {
@@ -313,6 +310,7 @@
             row.insertCell().textContent = book.author;
             row.insertCell().textContent = book.year_published;
             row.insertCell().textContent = book.loan_type;
+
             // Add buttons for borrow, return, delete, and update
             const borrowButtonCell = row.insertCell();
             const borrowButton = document.createElement('button');
@@ -327,7 +325,7 @@
             returnButtonCell.appendChild(returnButton);
 
             row.insertCell().textContent = book.return_date ? book.return_date : '-';
-            
+
             const deleteButtonCell = row.insertCell();
             const deleteButton = document.createElement('button');
             deleteButton.textContent = 'Delete';
@@ -340,15 +338,100 @@
             updateButton.onclick = () => updateBook(book.book_id);
             updateButtonCell.appendChild(updateButton);
         });
+
+        // Append table to the bookListDiv
+        bookListDiv.appendChild(table);
     })
     .catch(error => {
         console.error('Error getting books:', error);
+        console.error('Error response:', error.response); // Logging error response for debugging
         // Handle error here
     });
 };
 
 
-    
+
+async function deleteBook(bookId) {
+    try {
+        const token = sessionStorage.getItem('access_token');
+        if (!token) {
+            console.error("Access token not found in storage");
+            return;
+        }
+
+        const response = await axios.delete(`${SERVER_URL}/deletebook/${bookId}`, {
+            headers: {
+                Authorization: `Bearer ${token}`
+            }
+        });
+
+        console.log(response.data.message);
+        alert("Book deleted successfully"); // Add this line to show an alert message
+        // Optionally, update the UI to indicate success or refresh the book list
+        get_books(); // Refresh book list after deletion
+    } catch (error) {
+        console.error('Error deleting book:', error.response ? error.response.data.error : error.message);
+        // Handle error, show error message to the user, etc.
+    }
+}
+
+
+const updateBook = (bookId) => {
+    try {
+        const token = sessionStorage.getItem('access_token');
+        if (!token) {
+            console.error("Access token not found in storage");
+            return;
+        }
+
+        // Check if the user is a librarian
+        const userRole = sessionStorage.getItem('user_role');
+        if (userRole !== '1') {
+            console.log("Only librarians can update books");
+            alert("You are unauthorized to update books.");
+            return;
+        }
+
+        // Fetch book details from user input using prompt dialogs
+        const bookName = prompt("Enter updated book name:");
+        const author = prompt("Enter updated author:");
+        const yearPublished = prompt("Enter updated year published:");
+        const loanType = prompt("Enter updated loan type:");
+
+        // Create a FormData object and append the book details
+        const formData = new FormData();
+        formData.append('book_name', bookName);
+        formData.append('author', author);
+        formData.append('year_published', yearPublished);
+        formData.append('loan_type', loanType);
+
+        // Send PUT request to update book with form data
+        axios.put(`${SERVER_URL}/updatebook/${bookId}`, formData, {
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'multipart/form-data' // Set Content-Type to multipart/form-data
+            }
+        })
+        .then(response => {
+            console.log(response.data.message);
+            alert("Book updated successfully");
+            // Optionally, you can update the UI or show a success message to the user
+        })
+        .catch(error => {
+            console.error('Error updating book:', error.response.data.error);
+            alert("Failed to update book. Please try again.");
+            // Optionally, handle error or show error message to the user
+        });
+    } catch (error) {
+        console.error('Error updating book:', error);
+        alert("Failed to update book. Please try again.");
+        // Handle error, show error message to the user, etc.
+    }
+};
+
+
+
+
 
 
         function registerUser() {
@@ -388,79 +471,7 @@
         }
 
 
-
-        function get_books() {
-            axios.get('/getbooks')
-                .then(response => {
-                    console.log(response.data.books);
-                    // Display the books
-                    const books = response.data.books;
-                    const booksListDiv = document.getElementById('books-list');
-                    booksListDiv.innerHTML = '';
-
-                    // Create table
-                    const table = document.createElement('table');
-                    table.border = "1";
-                    table.style.borderCollapse = "collapse";
-
-                    // Create table header row
-                    const headerRow = table.insertRow();
-                    const headers = ['Book ID', 'Book Name', 'Author', 'Year Published', 'Loan Type', 'Delete', 'Update Book'];
-                    headers.forEach(headerText => {
-                        const headerCell = document.createElement('th');
-                        headerCell.appendChild(document.createTextNode(headerText));
-                        headerRow.appendChild(headerCell);
-                    });
-
-                    // Add books data to table rows
-                    books.forEach(book => {
-                        const row = table.insertRow();
-                        row.insertCell().appendChild(document.createTextNode(book.book_id));
-                        row.insertCell().appendChild(document.createTextNode(book.book_name));
-                        row.insertCell().appendChild(document.createTextNode(book.author));
-                        row.insertCell().appendChild(document.createTextNode(book.year_published));
-                        row.insertCell().appendChild(document.createTextNode(book.loan_type));
-                        
-                        // Create delete button
-                        const deleteButtonCell = row.insertCell();
-                        const deleteButton = document.createElement('button');
-                        deleteButton.textContent = 'Delete';
-                        deleteButton.onclick = () => deleteBook(book.book_id);
-                        deleteButtonCell.appendChild(deleteButton);
-
-                        // Create update button
-                        const updateButtonCell = row.insertCell();
-                        const updateButton = document.createElement('button');
-                        updateButton.textContent = 'Update';
-                        updateButton.onclick = () => updateBook(book.book_id);
-                        updateButtonCell.appendChild(updateButton);
-                    });
-
-                    booksListDiv.appendChild(table);
-                })
-                .catch(error => {
-                    console.error('Error getting books:', error.response.data.error);
-                    // Handle error, show error message to the user, etc.
-                });
-        }
-
-        function deleteBook(bookId) {
-            axios.delete(`/deletebook/${bookId}`)
-                .then(response => {
-                    console.log(response.data.message);
-                    // Optionally, update the UI to indicate success or refresh the book list
-                    get_books(); // Refresh book list after deletion
-                })
-                .catch(error => {
-                    console.error('Error deleting book:', error.response.data.error);
-                    // Handle error, show error message to the user, etc.
-                });
-        }
-
-        function updateBook(bookId) {
-            // Implement update book functionality here
-            // You can use a modal or a form to update the book details
-        }
+        
     </script>
     <hr>
     <div id="gret">Welcome</div>
@@ -483,11 +494,13 @@
     <option value="3">2 days</option>
 </select><br>
 
-    <button onclick="add_books()">Add Book</button>
-    <button onclick="get_books()">Show all books</button>
-
-    <div id="books-list"></div>
-
+    <div id="buttons-container"></div>
+        <button onclick="add_books()">Add Book</button>
+        <button onclick="get_books()">Show all books</button>
+    </div>
+    <div id="table-container"></div><br>
+    <div id="bookList"></div>
+    
     <hr>
     
     <script>
