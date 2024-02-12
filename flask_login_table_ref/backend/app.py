@@ -74,7 +74,7 @@ class Loans(db.Model):
 
 
 class LateLoans(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     loan_id = db.Column(db.Integer, ForeignKey('loans.id'), unique=True, nullable=False)
     loan = db.relationship('Loans', backref=db.backref('late_loan', uselist=False, lazy=True))
     cust_id = db.Column(db.Integer, ForeignKey('customer.cust_id'), nullable=False)
@@ -95,14 +95,14 @@ class LateLoans(db.Model):
         return '<Customer %r>' % self.username
 
 
-def calculate_return_date(self):
-        # Use loan_type information from Book class
-        if self.book.loan_type == 1:
-            return self.loan_date + timedelta(days=10)
-        elif self.book.loan_type == 2:
-            return self.loan_date + timedelta(days=5)
-        elif self.book.loan_type == 3:
-            return self.loan_date + timedelta(days=2)
+    def calculate_return_date(self, loan_date):
+        # Use loan_type information
+        if self.loan_type == 1:
+            return loan_date + timedelta(days=10)
+        elif self.loan_type == 2:
+            return loan_date + timedelta(days=5)
+        elif self.loan_type == 3:
+            return loan_date + timedelta(days=2)
         else:
             # Handle invalid loan types
             raise ValueError("Invalid loan type")
@@ -382,26 +382,22 @@ def update_book(book_id):
         return jsonify({'error': str(e)}), 500
 
 
-
-
-
-@app.route('/lendbook', methods=['POST'])
+@app.route('/lendbook/<int:book_id>', methods=['POST'])
 @jwt_required()
-def lend_book():
+def lend_book(book_id):
     try:
         # Get the current user's role and ID
         current_user_id = get_jwt_identity()
         current_user = Customer.query.get(current_user_id)
+        print("Current user ID:", current_user_id)  # Debug print
 
         # Check if the current user is a customer (role '0')
         if current_user.role != '0':
             return jsonify({'message': 'Only customers can borrow books'}), 403
 
-        # Get form data from request
-        book_id = request.form.get('book_id')
-
         # Query the book to be borrowed
         book_to_borrow = Book.query.get(book_id)
+        print("Book to borrow:", book_to_borrow)  # Debug print
 
         if not book_to_borrow:
             return jsonify({'message': 'Book not found'}), 404
@@ -413,84 +409,106 @@ def lend_book():
         # Update the borrowed flag to indicate the book is borrowed
         book_to_borrow.borrowed = True
 
-        # Set the loan date to the current date
-        book_to_borrow.loan_date = datetime.now()
-
-        # Calculate the return date based on loan type
-        return_date = book_to_borrow.calculate_return_date()
-
         # Commit the changes to the database
         db.session.commit()
 
-        # Print a message to the terminal
-        print('Book borrowed successfully. Return date:', return_date.strftime('%Y-%m-%d'))
+        # Set the loan date to the current date
+        loan_date = datetime.now()
+
+        # Map loan type values to corresponding days
+        loan_type_days = {
+            '1': 10,  # Assuming '1' corresponds to 10 days
+            '2': 5,   # Assuming '2' corresponds to 5 days
+            '3': 2    # Assuming '3' corresponds to 2 days
+        }
+
+        # Calculate the return date based on loan type
+        loan_type = str(book_to_borrow.loan_type)
+        if loan_type in loan_type_days:
+            return_date = loan_date + timedelta(days=loan_type_days[loan_type])
+        else:
+            print("Invalid loan type:", loan_type)  # Debug print
+            return jsonify({'message': 'Invalid loan type'}), 400
+
+        # Create a new loan record
+        new_loan = Loans(cust_id=current_user_id, book_id=book_id, loan_date=loan_date, return_date=return_date)
+        db.session.add(new_loan)
+        db.session.commit()
 
         # Provide a response with the return date
         return jsonify({'message': 'Book borrowed successfully', 'return_date': return_date.strftime('%Y-%m-%d')}), 200
 
     except Exception as e:
-        # Print an error message to the terminal
-        print('Error during book borrowing:', str(e))
+        print("Error:", str(e))  # Debug print
+        db.session.rollback()  # Rollback changes if an error occurs
         return jsonify({'error': str(e)}), 500
 
 
 
 
-@app.route('/returnbook/<int:lend_id>', methods=['POST'])
+@app.route('/returnbook/<int:book_id>', methods=['POST'])
 @jwt_required()
-def return_book(lend_id):
+def return_book(book_id):
     try:
+        print("Attempting to return book with book_id:", book_id)
+
         # Get the current user's role and ID
         current_user_id = get_jwt_identity()
         current_user = Customer.query.get(current_user_id)
+        print("Current user:", current_user)
 
         # Check if the current user is a customer (role '0')
         if current_user.role != '0':
+            print("User does not have permission to return books")
             return jsonify({'message': 'You do not have permission to return books'}), 403
 
         # Query the book to be returned
-        returned_book = Loans.query.get(lend_id)
+        returned_book = Book.query.get(book_id)
+        print("Returned book:", returned_book)
 
         if not returned_book:
-            return jsonify({'message': 'Loan record not found'}), 404
+            print("Book not found")
+            return jsonify({'message': 'Book not found'}), 404
 
         # Check if the book is already returned
-        if not returned_book.book.borrowed:
+        if not returned_book.borrowed:
+            print("Book is already returned")
             return jsonify({'message': 'Book is already returned'}), 400
 
         # Set the return date to the current date
-        returned_book.return_date = datetime.now()
+        returned_book.borrowed = False
 
         # Calculate the difference between the return date and the expected return date
-        late_days = (returned_book.return_date - returned_book.loan_date).days
+        late_days = (datetime.now() - returned_book.loans[-1].loan_date).days
+        print("Late days:", late_days)
 
         # Determine if the book was returned on time or late based on loan type
         if late_days <= 0:
             # Book returned on time
-            returned_book.book.borrowed = False
             db.session.commit()
-            print(f'Book returned successfully on time. Return date: {returned_book.return_date.strftime("%Y-%m-%d")}')
+            print(f'Book returned successfully on time. Return date: {datetime.now().strftime("%Y-%m-%d")}')
             return jsonify({'message': 'Book returned successfully on time'}), 200
         else:
             # Book returned late
-            returned_book.book.borrowed = False
             late_loan = LateLoans(
-                loan_id=returned_book.id,
-                cust_id=returned_book.cust_id,
-                book_id=returned_book.book_id,
-                loan_date=returned_book.loan_date,
-                return_date=returned_book.return_date,
-                actual_return_date=returned_book.return_date
+                loan_id=returned_book.loans[-1].id,
+                cust_id=current_user_id,
+                book_id=book_id,
+                loan_date=returned_book.loans[-1].loan_date,
+                return_date=datetime.now(),
+                actual_return_date=datetime.now()
             )
             db.session.add(late_loan)
             db.session.commit()
-            print(f'Book returned successfully, but {late_days} days late. Return date: {returned_book.return_date.strftime("%Y-%m-%d")}')
+            print(f'Book returned successfully, but {late_days} days late. Return date: {datetime.now().strftime("%Y-%m-%d")}')
             return jsonify({'message': f'Book returned successfully, but {late_days} days late'}), 200
 
     except Exception as e:
         # Print an error message to the terminal
         print('Error during book returning:', str(e))
         return jsonify({'error': str(e)}), 500
+
+
 
 
 @app.route('/getusers', methods=['GET'])

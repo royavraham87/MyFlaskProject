@@ -313,18 +313,29 @@ const get_books = () => {
 
             // Add buttons for borrow, return, delete, and update
             const borrowButtonCell = row.insertCell();
-            const borrowButton = document.createElement('button');
-            borrowButton.textContent = 'Borrow';
-            borrowButton.onclick = () => borrowBook(book.book_id);
-            borrowButtonCell.appendChild(borrowButton);
+            if (!book.borrowed) {
+                // Show the "Borrow" button if the book is not already borrowed
+                const borrowButton = document.createElement('button');
+                borrowButton.textContent = 'Borrow';
+                borrowButton.onclick = () => borrowBook(book.book_id);
+                borrowButtonCell.appendChild(borrowButton);
+            }
 
             const returnButtonCell = row.insertCell();
-            const returnButton = document.createElement('button');
-            returnButton.textContent = 'Return';
-            returnButton.onclick = () => returnBook(book.book_id);
-            returnButtonCell.appendChild(returnButton);
+    if (book.borrowed) {
+        // Show the "Return" button if the book is already borrowed
+        const returnButton = document.createElement('button');
+        returnButton.textContent = 'Return';
+        returnButton.onclick = () => returnBook(book.book_id);
+        returnButtonCell.appendChild(returnButton);
+    } else {
+        // Hide the "Return" button if the book is not borrowed
+        returnButtonCell.textContent = '-';
+    }
 
-            row.insertCell().textContent = book.return_date ? book.return_date : '-';
+    // Display return date or placeholder
+    const returnDateCell = row.insertCell();
+    returnDateCell.textContent = book.return_date ? book.return_date : '-';
 
             const deleteButtonCell = row.insertCell();
             const deleteButton = document.createElement('button');
@@ -335,7 +346,15 @@ const get_books = () => {
             const updateButtonCell = row.insertCell();
             const updateButton = document.createElement('button');
             updateButton.textContent = 'Update';
-            updateButton.onclick = () => updateBook(book.book_id);
+            updateButton.onclick = () => {
+                // Add role check before allowing update
+                const userRole = sessionStorage.getItem('user_role');
+                if (userRole === '1') {
+                    updateBook(book.book_id);
+                } else {
+                    alert('Only librarians can update books.');
+                }
+            };
             updateButtonCell.appendChild(updateButton);
         });
 
@@ -348,6 +367,7 @@ const get_books = () => {
         // Handle error here
     });
 };
+
 
 
 
@@ -429,9 +449,70 @@ const updateBook = (bookId) => {
     }
 };
 
+const borrowBook = async (bookId) => {
+    try {
+        const token = sessionStorage.getItem('access_token');
+        if (!token) {
+            console.error("Access token not found in storage");
+            return;
+        }
+
+        // Check if the user is a customer
+        const userRole = sessionStorage.getItem('user_role');
+        if (userRole !== '0') {
+            console.log("Only customers can borrow books");
+            alert("You are unauthorized to borrow books.");
+            return;
+        }
+
+        const response = await axios.post(`${SERVER_URL}/lendbook/${bookId}`, null, {
+            headers: {
+                Authorization: `Bearer ${token}`
+            }
+        });
+
+        console.log(response.data.message);
+        alert("Book borrowed successfully");
+
+        // Refresh book list after borrowing
+        get_books();
+
+    } catch (error) {
+        console.error('Error borrowing book:', error.response ? error.response.data.error : error.message);
+        alert("Failed to borrow book. Please try again.");
+        // Handle error, show error message to the user, etc.
+    }
+};
 
 
+const returnBook = async (bookId) => {
+    try {
+        console.log("Attempting to return book with ID:", bookId);
 
+        const token = sessionStorage.getItem('access_token');
+        if (!token) {
+            console.error("Access token not found in storage");
+            return;
+        }
+
+        const response = await axios.post(`${SERVER_URL}/returnbook/${bookId}`, null, {
+            headers: {
+                Authorization: `Bearer ${token}`
+            }
+        });
+
+        console.log("Return book response:", response.data.message);
+        alert("Book returned successfully");
+
+        // Optionally, refresh book list after returning the book
+        // get_books();
+
+    } catch (error) {
+        console.error('Error returning book:', error.response ? error.response.data.error : error.message);
+        alert("Failed to return book. Please try again.");
+        // Handle error, show error message to the user, etc.
+    }
+};
 
 
         function registerUser() {
